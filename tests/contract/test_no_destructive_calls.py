@@ -368,6 +368,25 @@ def test_the_production_code_contains_no_destructive_request() -> None:
     assert findings == [], "destructive call found:\n" + "\n".join(findings)
 
 
+def test_file_updates_keep_create_and_compare_and_swap_puts_distinct() -> None:
+    """A file update must stay compare-and-swap while file creation stays create-only."""
+    path = SRC / "nextcloud" / "clients" / "dav.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)}
+
+    create = ast.unparse(functions["put_new_file"])
+    update = ast.unparse(functions["update_file"])
+
+    assert "If-None-Match" in create
+    assert "*" in create
+    assert ".put(" in create
+
+    assert "If-Match" in update
+    assert "etag" in update
+    assert ".put(" in update
+
+
 def _is_own_sql(relative: str, text: str) -> bool:
     """True for a statement against our own store file, false for anything else."""
     return relative in FILES_WITH_OWN_SQL and any(form in text for form in SQL_DELETE_FORMS)

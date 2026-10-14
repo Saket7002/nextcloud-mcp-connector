@@ -545,6 +545,40 @@ async def put_new_file(
     }
 
 
+async def update_file(
+    client: httpx.AsyncClient,
+    creds: Credentials,
+    path: str,
+    data: bytes,
+    content_type: str,
+    etag: str,
+) -> dict:
+    """Replace an existing file only when its ETag still matches ``etag``."""
+    target = safe_path(path)
+    response = await client.put(
+        files_url(creds, target),
+        content=data,
+        headers={
+            "If-Match": etag,
+            "Content-Type": content_type,
+        },
+        auth=creds.auth(),
+    )
+    if response.status_code in (404, 412):
+        raise ConflictError(
+            message=f"The file {target!r} changed or was deleted before it could be updated.",
+            hint="Re-read the file and decide whether to retry.",
+        )
+    _check(response, target)
+    metadata = await stat(client, creds, target)
+    return {
+        "path": target,
+        "etag": metadata["etag"],
+        "size": metadata["size"],
+        "mtime": metadata["last_modified"],
+    }
+
+
 def uploads_url(creds: Credentials, upload_id: str, part: str | None = None, *, path: str) -> str:
     """Isolate connector uploads by sandbox and destination, including on retries.
 
@@ -751,7 +785,7 @@ def _check_write(response: httpx.Response, path: str) -> None:
 def _check(response: httpx.Response, path: str) -> None:
     """Translate a Nextcloud status into message plus hint. No retry, ever."""
     status = response.status_code
-    if status in (200, 206, 207):
+    if status in (200, 204, 206, 207):
         return
     if 300 <= status < 400:
         raise ToolError(
