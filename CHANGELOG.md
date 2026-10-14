@@ -9,6 +9,155 @@ All notable changes to this app are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- SECURITY.md with the two private reporting channels, CONTRIBUTING.md, issue
+  and pull request templates, and THIRD-PARTY.md with the licences of the
+  shipped dependencies.
+- CI security scans: CodeQL over the source and pip-audit over the locked
+  dependency set, weekly on top of every push.
+- Dependabot for the three dependency surfaces (actions, docker, uv).
+- docs/hardening.md (with German and French editions): every boundary this
+  server offers on one page, in the order to apply them on confidential
+  data, closing with a break-in drill to run before production.
+- A weekly OpenSSF Scorecard run that publishes its result; the README
+  carries the badge.
+- docs/threat-model.md: assets, trust boundaries, attackers, every threat
+  with the contract test or switch that holds its mitigation, and the
+  residual risks in plain sentences.
+- An injection corpus in the test suite: one poisoned value per content
+  family (a file name, a calendar summary, a mail subject and preview, a
+  chat message), each held to arrive character for character as data in
+  its content field and to leak into no other field of the answer.
+- Every GitHub release from 0.3.1 on carries a `.sig` asset beside the
+  tarball it signs: the same sha512 signature the store receives,
+  verifiable against the published app certificate.
+
+### Changed
+
+- The base image of both Dockerfile stages is pinned by its multi-arch
+  digest instead of the moving `3.13-slim` tag; dependabot's docker pass
+  moves the digest deliberately.
+- `main` is protected against force pushes and deletion by a repository
+  ruleset.
+- Every workflow action is pinned to a commit SHA instead of a tag.
+- `info.xml` declares the licence as `AGPL-3.0-or-later`, the same spelling
+  as `pyproject.toml` and the repository licence file.
+- Dependency lift after a pip-audit pass: httpx2 2.13.1 (PYSEC-2026-3846,
+  -3848, -3849) and PyJWT 2.15.1 (PYSEC-2026-4141, -4183).
+
+### Fixed
+
+- Sign in polls the endpoint Nextcloud announces in the login flow start answer
+  instead of a fixed path, so instances that serve it under `index.php` or a
+  subpath connect. When Nextcloud announces its public origin while the connector
+  reaches it internally (split horizon, such as `http://caddy` in ExApp mode), the
+  announced path and query move to the configured origin; a foreign host is never
+  contacted. Sign ins started before the update have to be started again.
+  Thanks to @slobinger (#18).
+
+## [0.5.1] - 2026-10-08
+
+### Changed
+
+- The tool schemas no longer carry the `title` keys pydantic derives from every parameter
+  name. They spelled each name a second time ("upload_id" carried `"title": "Upload Id"`),
+  so no client loses information, and `tools/list` shrinks from 17763 to 15440 bytes, paid
+  by every client in every session.
+
+### Fixed
+
+- The App Store shows the current screenshots again. The store mirror keeps the first
+  version it ever fetched of a URL and never refetches, so the overview image of the
+  first submission was served forever, and browsers that saw the mirror outage of
+  early October cached empty bodies until 2038. Both files were renamed
+  (`connections-v2.png`, `connections-page-v2.png`) and the manifest points there,
+  which gives the mirror fresh entries and every browser an uncached URL.
+
+## [0.5.0] - 2026-10-05
+
+### Added
+
+- `NC_MCP_DISABLED_TOOLS` switches whole tool bundles off, for example `mail,calendar`, so
+  smaller models do not confuse them with the tools of a second MCP server. Every bundle
+  is on unless set. An unknown name or every name at once refuses to start. It hides
+  tools and is not an access control: `search`, `fetch` and `prepare_context` still reach
+  the content of a hidden bundle. Declared for ExApp installations, and the start logs
+  which bundles are off (#15).
+
+### Changed
+
+- Fetching a single Talk message now returns the complete message within the fetched-text budget, or an explicit error when that budget is exceeded. The previous `metadata.truncated` field is no longer returned for message fetches; bounded `talk_browse` previews are unchanged.
+
+## [0.4.0] - 2026-10-01
+
+### Added
+
+- Files and folders that carry the collaborative system tag `kein-ki` (any casing, every variant
+  with the same name) no longer appear in any tool answer: not as a hit, content, snippet, digest
+  or file name. A tagged item answers exactly like a missing one. When the tag cannot be checked,
+  the affected answer fails closed with one `degraded` entry. This covers files, unified search
+  and fetch, notes, Talk, Tables, `prepare_context` and the Findling, Notes and comments hits.
+  Limits and evidence: docs/exclusion.md (EXCL-01..07).
+- `occ mcp_connector:exclusion:check [--admin <uid>] [--json]` reports in seven read-only steps
+  whether the exclusion tag is set up so the connector can enforce it. It never writes (OPS-01).
+- `files_read_as_markdown` reads DOCX, XLSX, PPTX and PDF files as Markdown, in slices with a
+  next offset like `files_read`. The parsers ship as the optional extra `documents`; the ExApp
+  image carries it. An Office file is checked against its own directory listing before anything
+  is inflated, with at most 50 MiB declared in total. A PDF above 500 pages and a workbook above
+  50 sheets are refused. A sheet or a Word table gives at most 256 columns and 10000 rows, and the
+  Markdown of one file stops at 8388608 characters with a note. A PDF with only an owner password
+  opens; a PDF that needs a user password is refused. Each conversion runs in its own worker
+  process with a 512 MiB address-space limit and a 30 second wall clock, at most two at once;
+  a PDF stream above 4 MiB decoded is refused before it is parsed. The tool asks the `kein-ki`
+  guard alongside the stat, as `files_read` does (TOOL-14).
+
+### Fixed
+
+- `occ mcp_connector:exchange:check` is registered again. Its description was 325 characters,
+  AppAPI stores a command description in a column of 255, and MariaDB refuses the row where
+  SQLite truncates it, so on a MariaDB instance the command never appeared in `occ list`. The
+  description now fits, and a test holds every command to that limit.
+
+### Changed
+
+- The "This link has expired" page now also says to open the link in the browser where you
+  are signed in to Nextcloud. The page answers every refused authorization decision, and the
+  most common one that is no expiry is an assistant app that shows the consent screen in its
+  own window while the sign-in happened in another browser
+  ([#11](https://github.com/street1983nk/nextcloud-mcp-connector/issues/11)).
+
+## [0.3.2] - 2026-09-29
+
+### Fixed
+
+- A checkbox unticked in the admin settings now stays off. AppAPI stores an unticked
+  checkbox as an empty string, and the app read that as "not set", so after the next start
+  (for example a disable and enable) the default came back. That hit the three switches that
+  ship on: self registration of clients, client ID metadata documents and sending Talk
+  messages. An administrator who closed one of them in the form had it open again without
+  any sign of it. A checkbox nobody touched still leaves the decision to the deploy variable
+  and the default in code
+  ([#10](https://github.com/street1983nk/nextcloud-mcp-connector/issues/10)).
+
+## [0.3.1] - 2026-09-29
+
+### Fixed
+
+- `NC_MCP_FILES_ROOT` now reaches an ExApp installation. 0.3.0 did not declare it in
+  `appinfo/info.xml`, so `occ app_api:app:register --env NC_MCP_FILES_ROOT=...` was accepted
+  and the variable was dropped without a warning: the file tools kept the whole files area of
+  every account. The standalone modes were not affected. A value passed before 0.3.1 never
+  arrived, so set the variable again after the update, and check the log line below
+  ([#12](https://github.com/street1983nk/nextcloud-mcp-connector/issues/12)).
+
+### Added
+
+- The ExApp logs at start which directory binds the file tools, or that none does, so an
+  administrator can see whether the sandbox took effect.
+
 ## [0.3.0] - 2026-09-26
 
 ### Added
@@ -829,6 +978,12 @@ First release, submitted to the Nextcloud App Store.
   never sees more than that user sees in the web interface.
 - A privacy and data flow description, see [docs/privacy.md](docs/privacy.md).
 
+[Unreleased]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/street1983nk/nextcloud-mcp-connector/compare/v0.1.15...v0.2.0

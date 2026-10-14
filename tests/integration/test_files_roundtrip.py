@@ -151,9 +151,7 @@ async def test_update_retains_previous_version(clients: NcClients) -> None:
     await files_tools.upload(clients, path=path, content=original)
     etag = (await dav.stat(clients.client, clients.creds, path))["etag"]
 
-    await files_tools.update(
-        clients, path=path, content="replacement\n", etag=etag
-    )
+    await files_tools.update(clients, path=path, content="replacement\n", etag=etag)
 
     info = await dav.stat(clients.client, clients.creds, path)
     response = await clients.client.get(

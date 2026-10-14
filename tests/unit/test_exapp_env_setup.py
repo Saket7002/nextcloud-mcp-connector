@@ -678,7 +678,9 @@ def test_the_build_context_excludes_the_history_and_any_env_file() -> None:
 def test_the_start_script_is_the_upstream_one_with_its_origin_named() -> None:
     """It is copied verbatim from HaRP on purpose, so the header has to say so."""
     text = START.read_text(encoding="utf-8")
+    # REUSE-IgnoreStart: the asserted string is quoted test data, not a tag.
     assert "SPDX-License-Identifier: AGPL-3.0-or-later" in text
+    # REUSE-IgnoreEnd
     assert "nextcloud/HaRP" in text
     assert "exapps_dev/start.sh" in text
     assert 'exec "$@"' in text, "without the exec the container would not run the app"
@@ -2380,6 +2382,14 @@ def test_every_variable_the_code_reads_is_declared_in_the_manifest(
     and cannot be set, because the deploy daemon drops what this manifest does not declare,
     would be half of a promise. The way meant for an administrator stays the admin settings
     of this app (BL-06); these three are the way of an installation set up by hand.
+
+    Nine became ten with 0.3.1, and that one is the reason this gate exists at all:
+    ``NC_MCP_FILES_ROOT`` shipped with 0.3.0, documented for every mode, and this set held
+    its absence for a release, so an ExApp installation ran with the whole files area while
+    the administrator had set a sandbox (issue #12).
+
+    Ten became eleven with ``NC_MCP_DISABLED_TOOLS`` (issue #15), declared together with
+    the code that reads it, so the lesson of issue #12 is not learned a second time.
     """
     declared = {
         (variable.findtext("name") or "").strip()
@@ -2393,6 +2403,8 @@ def test_every_variable_the_code_reads_is_declared_in_the_manifest(
         registry.ENV_ALLOWLIST_ONLY,
         registry.ENV_ALLOWED_CLIENTS,
         config.ENV_TALK_SEND,
+        config.ENV_FILES_ROOT,
+        config.ENV_DISABLED_TOOLS,
         config.ENV_AUDIT_LOG,
         config.ENV_AUDIT_RETENTION_DAYS,
         config.ENV_AUDIT_MAX_BYTES,

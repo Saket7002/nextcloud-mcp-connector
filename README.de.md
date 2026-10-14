@@ -4,6 +4,13 @@
 
 # MCP Connector für Nextcloud
 
+[![CI](https://github.com/street1983nk/nextcloud-mcp-connector/actions/workflows/ci.yml/badge.svg)](https://github.com/street1983nk/nextcloud-mcp-connector/actions/workflows/ci.yml)
+[![Security scans](https://github.com/street1983nk/nextcloud-mcp-connector/actions/workflows/security.yml/badge.svg)](https://github.com/street1983nk/nextcloud-mcp-connector/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/street1983nk/nextcloud-mcp-connector/badge)](https://scorecard.dev/viewer/?uri=github.com/street1983nk/nextcloud-mcp-connector)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15326/badge)](https://www.bestpractices.dev/projects/15326)
+[![Nextcloud App Store](https://img.shields.io/badge/App_Store-mcp__connector-0082c9)](https://apps.nextcloud.com/apps/mcp_connector)
+[![Lizenz](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)](LICENSE)
+
 Ein kuratierter MCP Server, der Ihr Nextcloud (Dateien, Kalender, Notizen, Deck, Kontakte,
 Tables, Talk und Mail) mit KI-Assistenten wie Claude, Cursor, ChatGPT oder Ihren eigenen
 Agenten verbindet. Als Nextcloud-ExApp installiert, ist er zugleich sein eigener
@@ -98,6 +105,23 @@ Satz beantwortet, nie mit einem leeren Ergebnis.
 {"query":"budget","count":2,"results":[{"id":"file:4711","title":"Budget 2026.md","url":"https://cloud.example.org/index.php/f/4711","provider":"files","kind":"file"},{"id":"url:https://cloud.example.org/index.php/call/abc123","title":"Khaled","url":"https://cloud.example.org/index.php/call/abc123","provider":"talk-conversations","kind":"url","resolvable":false}]}
 ```
 
+## Ordner ausnehmen: das Tag kein-ki
+
+Ein Ordner oder eine Datei mit dem kollaborativen Tag `kein-ki` ist für den Assistenten unsichtbar, samt allem darunter.
+Prüfen mit `php occ mcp_connector:exclusion:check --admin=<uid>`.
+Wichtigste Grenze: Ein Tag oberhalb der Wurzel einer Freigabe schützt den geteilten Ordner beim Empfänger nicht, also den Ordner taggen, den man teilt.
+Einrichtung, alle Grenzen und ihre Befunde: [docs/exclusion.de.md](docs/exclusion.de.md).
+
+## Architektur
+
+Ein Container, eine App: der Connector ist eine Nextcloud-ExApp auf Basis von
+FastAPI und dem offiziellen MCP-SDK, Streamable HTTP und stdio aus demselben
+Server, und er ist sein eigener OAuth-2.1-Authorization-Server mit Brücke in
+die Nextcloud-Anmeldung. Jeder Tool-Aufruf ist ein HTTP-Request gegen
+Nextclouds eigene APIs (WebDAV, CalDAV, CardDAV, OCS und App-REST-APIs) als
+der angemeldete Nutzer; die Rechte gelten unverändert, nichts wird indexiert
+oder kopiert.
+
 ## Sicherheit
 
 Dieser Server hält **private Daten**, er nimmt **nicht vertrauenswürdige Inhalte** auf (eine
@@ -109,7 +133,11 @@ Sprachmodell trennt Daten nicht zuverlässig von Anweisungen. Deshalb sitzt `tal
 dem Administrationsschalter `NC_MCP_TALK_SEND`, der den Ausgangskanal für die ganze Instanz
 schließt, während das Lesen unberührt bleibt, und Mail bringt Reichweite mit, bewusst ohne
 eigenen Ausgang. Beides macht Prompt Injection nicht unmöglich. Die lange Fassung, mit jeder
-Gegenmaßnahme und dem ehrlichen Rest, steht in [docs/privacy.md](docs/privacy.md). Die
+Gegenmaßnahme und dem ehrlichen Rest, steht in [docs/privacy.md](docs/privacy.md). Jede
+Grenze dieses Servers auf einer Seite, in der Reihenfolge für den Betrieb auf vertraulichen
+Daten: [docs/hardening.de.md](docs/hardening.de.md). Die systematische Fassung, Assets,
+Angreifer und jede Bedrohung mit dem Test, der die Gegenmaßnahme hält:
+[docs/threat-model.md](docs/threat-model.md) (englisch). Die
 Schalter liegen unter Einstellungen, Administration, Sicherheit:
 
 ![Admin-Einstellungen des MCP Connectors](docs/screenshots/admin-settings.png)
@@ -154,7 +182,7 @@ Umgebungsvariable und die drei Fehler, die wirklich vorkommen:
 [docs/oauth-setup.md](docs/oauth-setup.md). Automatisierungsplattformen sind auch Clients,
 mit einer OAuth-Verbindung je Person: [docs/n8n-setup.md](docs/n8n-setup.md).
 
-![Verbindungsseite mit zwei verbundenen Assistenten](docs/screenshots/connections-page.png)
+![Verbindungsseite mit zwei verbundenen Assistenten](docs/screenshots/connections-page-v2.png)
 
 ## Datenschutz
 
