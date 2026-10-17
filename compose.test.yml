@@ -13,7 +13,7 @@
 # generated at bootstrap time and land in .env.test, which is git-ignored.
 services:
   nextcloud:
-    image: nextcloud:35-apache
+    image: nextcloud:34-apache
     container_name: nc-mcp-test
     ports:
       # Loopback only (WR-06): with the default admin password and the bruteforce guard

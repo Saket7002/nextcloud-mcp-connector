@@ -68,7 +68,7 @@ def pragma(tmp_path: Path, name: str) -> Any:
 
 
 def pages_times_size(tmp_path: Path) -> int:
-    """The number that looks like the size of the store and is not (18-RESEARCH.md Â§8)."""
+    """The number that looks like the size of the store and is not (18-RESEARCH.md §8)."""
     return pragma(tmp_path, "page_count") * pragma(tmp_path, "page_size")
 
 
@@ -378,7 +378,7 @@ async def test_an_acting_party_is_cleaned_on_the_same_rule_as_a_client_name(
     (row,) = rows(tmp_path)
     actor, client_name = row[4], row[9]
     assert "\n" not in actor
-    assert "â€®" not in actor
+    assert "\u202e" not in actor
     assert len(actor) <= store.ACTOR_LIMIT
     assert actor == client_name[: store.ACTOR_LIMIT], "one rule, applied twice, not two rules"
 

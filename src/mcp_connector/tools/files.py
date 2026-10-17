@@ -26,7 +26,7 @@ from typing import Any
 
 from .. import config, documents, ids, paging
 from ..documents import detect as document_detect
-from ..errors import REASON_GUARD_TRIPPED, ToolError
+from ..errors import REASON_GUARD_TRIPPED, REASON_UNKNOWN_ID, ConflictError, ToolError
 from ..nextcloud import NcClients
 from ..nextcloud.clients import dav
 from ..nextcloud.exclusion import TagScope
@@ -368,6 +368,7 @@ async def read(
         )
 
     target = dav.safe_path(path)
+
     info = await _visible_stat(clients, target, known)
 
     if info["is_collection"]:
@@ -652,7 +653,8 @@ async def update(
         )
 
     target = dav.safe_path(path)
-    info = await dav.stat(clients.client, clients.creds, target)
+
+    info = await _visible_stat(clients, target, missing_as_conflict=True)
 
     if info["is_collection"]:
         raise ToolError(
@@ -888,7 +890,11 @@ async def _writable(clients: NcClients, target: str) -> None:
 
 
 async def _visible_stat(
-    clients: NcClients, target: str, known: Mapping[str, Any] | None = None
+    clients: NcClients,
+    target: str,
+    known: Mapping[str, Any] | None = None,
+    *,
+    missing_as_conflict: bool = False,
 ) -> dict[str, Any]:
     """``dav.stat`` of ``target``, or the error a path that does not exist would get.
 
@@ -928,6 +934,13 @@ async def _visible_stat(
     if scope.state == "unverifiable":
         raise withhold.unavailable_error()
     if isinstance(info, BaseException):
+        if missing_as_conflict and isinstance(info, ToolError) and info.reason == REASON_UNKNOWN_ID:
+            if scope.excludes(path=target):
+                raise dav.not_found(target)
+            raise ConflictError(
+                message=f"The file {target!r} changed or was deleted before it could be updated.",
+                hint="Re-read the file and decide whether to retry.",
+            ) from None
         raise info
     if scope.excludes(path=target, fileid=str(info.get("fileid") or "") or None):
         raise dav.not_found(target)

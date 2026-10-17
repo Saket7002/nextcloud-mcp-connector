@@ -39,7 +39,7 @@ def test_no_crlf_in_files_the_container_reads(path: Path) -> None:
 
 def test_compose_pins_the_nextcloud_image_and_a_healthcheck() -> None:
     text = COMPOSE.read_text(encoding="utf-8")
-    assert "nextcloud:35-apache" in text
+    assert "nextcloud:34-apache" in text
     assert "SQLITE_DATABASE" in text, "no second database container for the test instance"
     assert "healthcheck" in text, "docker compose up --wait needs a healthcheck"
 

@@ -797,6 +797,52 @@ async def put_new_file(
     }
 
 
+def _check_update(response: httpx.Response, path: str) -> None:
+    """Translate responses to an ETag-protected file update."""
+    status = response.status_code
+
+    if status in (404, 412):
+        raise ConflictError(
+            message=f"The file {path!r} changed or was deleted before it could be updated.",
+            hint="Re-read the file and decide whether to retry.",
+        )
+
+    if status in (200, 204):
+        return
+
+    _check(response, path)
+    raise ToolError(
+        message=f"Nextcloud answered the update of {path} with an unexpected status {status}.",
+        hint="Check the Nextcloud log for that request.",
+    )
+
+
+async def _has_previous_version(
+    client: httpx.AsyncClient,
+    creds: Credentials,
+    fileid: int | str,
+) -> bool:
+    """Return whether Nextcloud confirms a retained previous version."""
+    if not fileid:
+        return False
+    try:
+        response = await client.get(
+            f"{creds.base_url}/ocs/v2.php/apps/files_versions/api/v1/versions/{fileid}",
+            params={"format": "json"},
+            headers={"OCS-APIRequest": "true"},
+            auth=creds.auth(),
+        )
+        if response.status_code != 200:
+            return False
+
+        data = response.json().get("ocs", {}).get("data")
+        return isinstance(data, list) and bool(data)
+    except (httpx.HTTPError, ValueError, AttributeError, TypeError):
+        # Version verification is best-effort; do not turn a successful update
+        # into a failure just because the history endpoint is unavailable.
+        return False
+
+
 async def update_file(
     client: httpx.AsyncClient,
     creds: Credentials,
@@ -816,18 +862,15 @@ async def update_file(
         },
         auth=creds.auth(),
     )
-    if response.status_code in (404, 412):
-        raise ConflictError(
-            message=f"The file {target!r} changed or was deleted before it could be updated.",
-            hint="Re-read the file and decide whether to retry.",
-        )
-    _check(response, target)
+    _check_update(response, target)
     metadata = await stat(client, creds, target)
+    versioned = await _has_previous_version(client, creds, metadata["fileid"])
     return {
         "path": target,
         "etag": metadata["etag"],
         "size": metadata["size"],
         "mtime": metadata["last_modified"],
+        "versioned": versioned,
     }
 
 

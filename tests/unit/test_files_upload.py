@@ -357,10 +357,11 @@ async def test_update_replaces_text_file_with_caller_etag(clients: NcClients) ->
     current_etag = '"caller-etag"'
     new_etag = '"new-etag"'
     stat_xml = """<?xml version="1.0" encoding="utf-8"?>
-<d:multistatus xmlns:d="DAV:">
+<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
   <d:response>
     <d:propstat>
       <d:prop>
+        <oc:fileid>123</oc:fileid>
         <d:getcontentlength>13</d:getcontentlength>
         <d:getcontenttype>text/markdown</d:getcontenttype>
         <d:getlastmodified>Thu, 08 Oct 2026 10:00:00 GMT</d:getlastmodified>
@@ -375,6 +376,16 @@ async def test_update_replaces_text_file_with_caller_etag(clients: NcClients) ->
         put = mock.route(method="PUT", url=TARGET_URL).mock(return_value=httpx.Response(204))
         mock.route(method="PROPFIND", url=TARGET_URL).mock(
             return_value=httpx.Response(207, text=stat_xml)
+        )
+
+        mock.route(
+            method="GET",
+            url__regex=r".*/ocs/v2\.php/apps/files_versions/api/v1/versions/123(?:\?.*)?$",
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"ocs": {"data": [{"id": 1}]}},
+            )
         )
 
         result = await files_tools.update(
@@ -392,6 +403,7 @@ async def test_update_replaces_text_file_with_caller_etag(clients: NcClients) ->
         "etag": new_etag,
         "size": 13,
         "mtime": "Thu, 08 Oct 2026 10:00:00 GMT",
+        "versioned": True,
     }
 
 
