@@ -419,6 +419,11 @@ async def read(
         "content": content,
         "size": size,
         "content_type": content_type,
+        # The CAS handle of files_update. Every slice carries the same value as long as
+        # the file is unchanged, so a client that read several slices can detect a
+        # version change by comparing them. A ``known`` mapping of a resolver that did
+        # not carry one answers with the empty string rather than a second stat.
+        "etag": info.get("etag", ""),
         "truncated": offset + used < size,
     }
     if result["truncated"]:
@@ -639,19 +644,44 @@ async def upload(
     return await dav.put_new_file(clients.client, clients.creds, target, data, content_type)
 
 
+def _update_conflict(target: str) -> ConflictError:
+    """The one conflict sentence of the update path.
+
+    A stale ETag, a deleted file, a tagged file and a file below a tagged folder all
+    earn this same sentence: the caller re-reads and decides, and the answer reveals
+    nothing about which of the four cases it was.
+    """
+    return ConflictError(
+        message=f"The file {target!r} changed or was deleted before it could be updated.",
+        hint="Re-read the file and decide whether to retry.",
+    )
+
+
 async def update(
     clients: NcClients,
     path: str,
     content: str,
     etag: str,
 ) -> dict:
-    """Replace an existing UTF-8 text file when its ETag still matches."""
+    """Replace an existing UTF-8 text file when its ETag still matches.
+
+    The supplied ETag is validated to exactly one strong quoted validator before any
+    request (SabreDAV would honour ``*``, an empty value or a list and skip the
+    precondition), compared against the file's current ETag, and still sent as
+    ``If-Match`` so the window between the comparison and the PUT stays covered.
+
+    Every target the caller may not see or that does not exist answers with one and the
+    same conflict sentence (D-27-01 family): a tagged file, a file below a tagged folder
+    and a deleted file are deliberately indistinguishable here, so the answer carries no
+    existence oracle.
+    """
     if (path or "").strip().endswith("/"):
         raise ToolError(
             message=f"{path!r} names a folder, not a file.",
             hint=_FILE_TARGET_HINT,
         )
 
+    wanted = dav.normalize_etag(etag)
     target = dav.safe_path(path)
 
     info = await _visible_stat(clients, target, missing_as_conflict=True)
@@ -661,6 +691,9 @@ async def update(
             message=f"{target} is a folder, not a file.",
             hint="Use files_list to see what is inside a folder.",
         )
+
+    if info["etag"] and wanted != info["etag"]:
+        raise _update_conflict(target)
 
     content_type = info["content_type"] or "application/octet-stream"
     if not _is_text(content_type):
@@ -689,7 +722,8 @@ async def update(
         target,
         data,
         content_type,
-        etag,
+        wanted,
+        fileid=info["fileid"],
     )
 
 
@@ -921,6 +955,7 @@ async def _visible_stat(
             "is_collection": bool(known.get("is_collection")),
             "content_type": str(known.get("content_type") or ""),
             "size": int(known.get("size") or 0),
+            "etag": str(known.get("etag") or ""),
             "fileid": fileid,
         }
 
@@ -935,14 +970,15 @@ async def _visible_stat(
         raise withhold.unavailable_error()
     if isinstance(info, BaseException):
         if missing_as_conflict and isinstance(info, ToolError) and info.reason == REASON_UNKNOWN_ID:
-            if scope.excludes(path=target):
-                raise dav.not_found(target)
-            raise ConflictError(
-                message=f"The file {target!r} changed or was deleted before it could be updated.",
-                hint="Re-read the file and decide whether to retry.",
-            ) from None
+            raise _update_conflict(target) from None
         raise info
     if scope.excludes(path=target, fileid=str(info.get("fileid") or "") or None):
+        if missing_as_conflict:
+            # One sentence for every target the caller may not see: a tagged file, a
+            # file below a tagged folder and a deleted file answer identically, so the
+            # conflict carries no existence oracle (the read path answers all three
+            # with "not found" for the same reason).
+            raise _update_conflict(target)
         raise dav.not_found(target)
     return info
 

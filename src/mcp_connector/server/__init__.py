@@ -60,9 +60,13 @@ mcp = MCPServer(
     version=__version__,
     instructions=(
         "Read and create content in the user's own Nextcloud. "
-        "Files are never deleted, moved, renamed or unconditionally overwritten. "
-        "When the administrator enables files_update, existing UTF-8 text files can be "
-        "replaced only with a matching ETag."
+        "Files are never deleted, moved, renamed or unconditionally overwritten."
+        + (
+            " Existing UTF-8 text files can be replaced with files_update, "
+            "and only with a matching ETag."
+            if config.files_update_enabled()
+            else ""
+        )
     ),
     token_verifier=_token_verifier,
     auth=_auth_settings,

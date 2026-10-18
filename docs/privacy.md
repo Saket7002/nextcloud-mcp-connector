@@ -176,8 +176,10 @@ protection incident.
   who needs every path closed also reviews which folders, boards and tables the
   connected accounts share.
 - A conditional replacement can change content visible to people who share
-  a file. The `versioned` result is true only when Nextcloud confirms a
-  retained previous version; false means retention could not be confirmed.
+  a file. The `versioned` result is true only when Nextcloud's version listing
+  shows one more retained version after the write; null means the listing
+  could not be read, for example with the versions app disabled or on another
+  storage backend.
 - **Mail is read only.** There is no way in this app to send a mail, to create a
   draft, to move, flag or delete a message, and the attachment route of the Mail app
   is never called. The new family adds reach into private data and untrusted

@@ -430,24 +430,26 @@ async def test_a_hostile_acting_party_is_cleaned_and_cut_before_it_is_written(
 
 
 @pytest.mark.anyio
-async def test_file_update_wrapper_records_path_and_both_etags(
+async def test_no_table_beside_the_chain_holds_file_paths_or_etags(
     recorder: Recorder, audit_file: Path
 ) -> None:
-    from mcp_connector.audit.record import record_file_update
+    """D-04 and T-18-01: the store knows chains of value-free rows and nothing else.
 
-    ctx = FakeContext(recorder=recorder)
-
-    await record_file_update(
-        ctx,
-        path="/documents/report.txt",
-        old_etag='"old-etag"',
-        new_etag='"new-etag"',
-    )
+    A successful ``files_update`` is recorded like every other call, through the graceful
+    wrapper: tool name, outcome and parameter names, never the path or an ETag. This
+    pins the schema so no sidecar table for update values can come back unnoticed.
+    """
+    store_obj = await recorder.store_provider()
+    assert store_obj is not None
 
     connection = sqlite3.connect(audit_file)
     try:
-        row = connection.execute("SELECT path, old_etag, new_etag FROM file_updates").fetchone()
+        tables = {
+            name
+            for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
     finally:
         connection.close()
 
-    assert row == ("/documents/report.txt", '"old-etag"', '"new-etag"')
+    assert "file_updates" not in tables
+    assert tables <= {"entries", "sqlite_sequence"}

@@ -1204,27 +1204,3 @@ async def test_the_account_check_is_never_offered_the_refusal_chain(tmp_path: Pa
     await write_calls(subject, ALICE, [silent])
 
     assert await subject.silent_users(moment=moment) == ["alice"]
-
-
-async def test_file_update_audit_records_path_and_both_etags(tmp_path: Path) -> None:
-    audit_store = open_store(tmp_path)
-
-    await audit_store.record_file_update(
-        path="/documents/report.txt",
-        old_etag='"old-etag"',
-        new_etag='"new-etag"',
-        moment=1_800_000_000,
-    )
-
-    conn = sqlite3.connect(tmp_path / store.AUDIT_FILENAME)
-    try:
-        row = conn.execute("SELECT at, path, old_etag, new_etag FROM file_updates").fetchone()
-    finally:
-        conn.close()
-
-    assert row == (
-        1_800_000_000,
-        "/documents/report.txt",
-        '"old-etag"',
-        '"new-etag"',
-    )

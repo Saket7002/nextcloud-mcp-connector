@@ -13,6 +13,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `files_update`, the 24th tool and the first that changes existing content: it
+  replaces one existing UTF-8 text file, whole, and only when the ETag the
+  caller read still matches (compare-and-swap via `If-Match`; SabreDAV-vacuous
+  shapes such as `*`, empty values, weak validators and lists are refused
+  before any request). Off by default; an administrator enables it with
+  `NC_MCP_FILES_UPDATE`. `files_read` now returns the file's ETag as the
+  handle for it. The answer reports `versioned: true` only when Nextcloud's
+  version listing shows one more retained version after the write, and `null`
+  when that listing cannot be read. A tagged, missing or otherwise invisible
+  target answers with one and the same conflict sentence, so the refusal
+  carries no existence oracle. Audit-wise the call is recorded like every
+  other call, value-free; no paths or ETags are stored. Thanks to @Saket7002
+  for the implementation (#9, #26) and to @DaniW42 for the live-tested review.
+
 - SECURITY.md with the two private reporting channels, CONTRIBUTING.md, issue
   and pull request templates, and THIRD-PARTY.md with the licences of the
   shipped dependencies.

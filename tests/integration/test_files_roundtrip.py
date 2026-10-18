@@ -14,9 +14,9 @@ Without ``NC_MCP_URL`` the conftest guard skips everything here, so the default 
 green on a machine without Docker.
 """
 
+import asyncio
 import time
 import uuid
-from urllib.parse import quote
 
 import httpx
 import pytest
@@ -25,6 +25,7 @@ from mcp_connector.config import normalize_base_url
 from mcp_connector.errors import ConflictError, ToolError
 from mcp_connector.nextcloud import NcClients
 from mcp_connector.nextcloud.clients import dav
+from mcp_connector.nextcloud.clients import xml as dav_xml
 from mcp_connector.nextcloud.credentials import Credentials
 from mcp_connector.tools import files as files_tools
 
@@ -116,6 +117,10 @@ async def test_stale_if_match_returns_412_and_preserves_content(
     path = _unique_path()
     await files_tools.upload(clients, path=path, content="original\n")
     stale_etag = (await dav.stat(clients.client, clients.creds, path))["etag"]
+    # Nextcloud's ETag changes with mtime granularity (one second on local storage), so
+    # two writes in the same second can share one ETag. The pause makes the staleness
+    # real instead of racing the clock; the limit itself is documented in client-setup.
+    await asyncio.sleep(1.1)
     await files_tools.update(clients, path=path, content="updated\n", etag=stale_etag)
 
     raw = await clients.client.put(
@@ -146,39 +151,69 @@ async def test_correct_if_match_returns_204_and_replaces_content(
 
 
 async def test_update_retains_previous_version(clients: NcClients) -> None:
+    """``versioned: true`` is backed by a downloadable copy of the overwritten content."""
     path = _unique_path()
     original = "previous version\n"
     await files_tools.upload(clients, path=path, content=original)
-    etag = (await dav.stat(clients.client, clients.creds, path))["etag"]
+    read = await files_tools.read(clients, path=path)
+    await asyncio.sleep(1.1)
 
-    await files_tools.update(clients, path=path, content="replacement\n", etag=etag)
+    result = await files_tools.update(
+        clients, path=path, content="replacement\n", etag=read["etag"]
+    )
+    assert result["versioned"] is True
 
     info = await dav.stat(clients.client, clients.creds, path)
-    response = await clients.client.get(
-        f"{clients.creds.base_url}/ocs/v2.php/apps/files_versions/api/v1/versions/{info['fileid']}",
-        params={"format": "json"},
-        headers={"OCS-APIRequest": "true"},
+    listing = await clients.client.request(
+        "PROPFIND",
+        dav.versions_url(clients.creds, info["fileid"]),
+        headers={"Depth": "1"},
         auth=httpx.BasicAuth(clients.creds.user, clients.creds.secret),
     )
-    response.raise_for_status()
-    versions = response.json()["ocs"]["data"]
-    assert versions, "Nextcloud should retain a previous version after replacement"
+    assert listing.status_code == 207
+    hrefs = [href for href, _props in dav_xml.parse_multistatus(listing.content)]
+    # The first entry is the collection itself; every later one is a retained version.
+    contents = []
+    for href in hrefs[1:]:
+        download = await clients.client.get(
+            f"{normalize_base_url(clients.creds.base_url)}{href}" if href.startswith("/") else href,
+            auth=httpx.BasicAuth(clients.creds.user, clients.creds.secret),
+        )
+        download.raise_for_status()
+        contents.append(download.text)
+    assert original in contents, "the overwritten content must be retrievable as a version"
 
-    previous = next(
-        (version for version in versions if version.get("timestamp") or version.get("version")),
-        None,
-    )
-    assert previous is not None, "a retained version must identify its revision"
-    revision = previous.get("timestamp") or previous.get("version")
 
-    version_url = (
-        f"{clients.creds.base_url}/remote.php/dav/versions/"
-        f"{quote(clients.creds.user, safe='')}/versions/"
-        f"{info['fileid']}/{quote(str(revision), safe='')}"
-    )
-    download = await clients.client.get(
-        version_url,
-        auth=httpx.BasicAuth(clients.creds.user, clients.creds.secret),
-    )
-    download.raise_for_status()
-    assert download.text == original
+async def test_vacuous_if_match_shapes_are_refused_before_any_write(
+    clients: NcClients,
+) -> None:
+    """``*``, an empty value and a list never reach SabreDAV, which would honour them."""
+    path = _unique_path()
+    await files_tools.upload(clients, path=path, content="untouched\n")
+    current = (await files_tools.read(clients, path=path))["etag"]
+
+    for vacuous in ("*", "", f"{current}, {current}", 'W/"weak"'):
+        with pytest.raises(ToolError) as excinfo:
+            await files_tools.update(clients, path=path, content="smuggled\n", etag=vacuous)
+        assert "not one strong ETag" in excinfo.value.message
+
+    assert (await files_tools.read(clients, path=path))["content"] == "untouched\n"
+
+
+async def test_read_then_update_round_trip_uses_the_returned_etag(
+    clients: NcClients,
+) -> None:
+    """The loop a real client runs: read hands out the ETag that update consumes."""
+    path = _unique_path()
+    await files_tools.upload(clients, path=path, content="first\n")
+
+    read = await files_tools.read(clients, path=path)
+    assert read["etag"], "files_read must return the CAS handle"
+
+    result = await files_tools.update(clients, path=path, content="second\n", etag=read["etag"])
+    assert result["path"] == path
+    assert result["size"] == len(b"second\n")
+
+    after = await files_tools.read(clients, path=path)
+    assert after["content"] == "second\n"
+    assert after["etag"] == result["etag"]
